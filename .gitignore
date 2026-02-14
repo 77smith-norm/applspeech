@@ -1,0 +1,10 @@
+.build/
+Packages/
+*.xcodeproj
+*.swp
+*.swo
+*~
+.DS_Store
+.ralph-codex-output.txt
+.codex-outputs/
+.jj/
