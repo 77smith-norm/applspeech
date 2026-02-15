@@ -12,7 +12,7 @@
 **applspeech** is a command-line tool for transcribing and analyzing audio using Apple's on-device Speech framework. It supports live transcription, file-based transcription, and speech analysis.
 
 **Target users**: Bot accounts, automation scripts, CLI workflows, accessibility tools
-**Target platform**: macOS 15.0+ (Sonoma or later)
+**Target platform**: macOS 26.0+ (Sonoma or later, required for SpeechTranscriber API)
 **Binary name**: `applspeech`
 
 ---
@@ -306,7 +306,7 @@ jj new
 
 ### Required
 - Swift 6.2.3+ (check with `swift --version`)
-- macOS 15.0+ (Sonoma or later)
+- macOS 26.0+ (Sonoma or later, required for SpeechTranscriber API)
 - Xcode 16.0+ (for development)
 
 ### System Frameworks
@@ -461,11 +461,15 @@ jj restore                            # Revert working directory
 
 ## §15 — Voice Input Sources
 
-This project supports multiple audio input sources:
+This project uses **SpeechTranscriber** API for transcription:
 
-- **File**: Local audio files (m4a, mp3, wav, etc.)
-- **Microphone**: Live transcription from system microphone
+- **File**: Local audio files (flac, wav, m4a, mp3)
+- **Live**: Real-time transcription via microphone using `.progressiveLiveTranscription`
 - **URL**: Remote audio files via HTTP/HTTPS
+
+### Transcription Modes
+- **Offline**: Uses `SpeechTranscriber.offlineTranscription` - processes entire file
+- **Live**: Uses `SpeechTranscriber.progressiveLiveTranscription` - real-time results
 
 ### Telegram Integration
 Audio from Telegram messages can be processed:
