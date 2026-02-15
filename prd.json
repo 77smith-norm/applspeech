@@ -19,7 +19,7 @@
     {
       "id": "S02-transcribe-file",
       "title": "File transcription",
-      "description": "Core: transcribe local audio files using SpeechTranscriber offline API",
+      "description": "Core: transcribe local audio files (legacy SFSpeechRecognizer; modern SpeechTranscriber engine on macOS 26+)",
       "dependencies": [
         "S01-project-setup"
       ],
@@ -27,7 +27,8 @@
         "applspeech transcribe <file> works",
         "Supports flac, wav, m4a, mp3",
         "On-device transcription (privacy)",
-        "Returns transcribed text"
+        "Returns transcribed text",
+        "--engine flag selects transcription engine"
       ],
       "priority": 2,
       "passes": true
@@ -41,7 +42,7 @@
       ],
       "acceptance_criteria": [
         "--format json flag",
-        "Includes text, confidence, segments",
+        "Includes text, file, language, engine",
         "Parseable by scripts"
       ],
       "priority": 3,
@@ -50,14 +51,14 @@
     {
       "id": "S04-locale-support",
       "title": "Locale selection",
-      "description": "Language/locale selection with automatic model download",
+      "description": "Language/locale selection with optional model download via authorize",
       "dependencies": [
         "S02-transcribe-file"
       ],
       "acceptance_criteria": [
         "--locale flag (e.g., en-US)",
-        "Auto-download model if needed",
-        "Default to system locale"
+        "Optional model download for modern engine via authorize",
+        "Default to en-US"
       ],
       "priority": 4,
       "passes": true
@@ -75,7 +76,7 @@
         "Handles network errors"
       ],
       "priority": 5,
-      "passes": false
+      "passes": true
     },
     {
       "id": "S06-telegram-source",
@@ -90,7 +91,7 @@
         "Return transcription"
       ],
       "priority": 6,
-      "passes": false
+      "passes": true
     },
     {
       "id": "S07-stdin-pipe",
@@ -105,7 +106,7 @@
         "Compatible with curl |"
       ],
       "priority": 7,
-      "passes": false
+      "passes": true
     },
     {
       "id": "S08-speechanalyzer",
@@ -137,7 +138,7 @@
         "User-friendly errors"
       ],
       "priority": 9,
-      "passes": false
+      "passes": true
     }
   ]
 }
