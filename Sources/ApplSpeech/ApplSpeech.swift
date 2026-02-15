@@ -21,10 +21,13 @@ enum HelpText {
 
     USAGE:
       applspeech [--help]
+      applspeech transcribe <file>
+
+    COMMANDS:
+      transcribe <file>   Transcribe a local audio file
 
     OPTIONS:
       -h, --help     Show help
     """
   }
 }
-
