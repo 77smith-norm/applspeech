@@ -14,7 +14,11 @@ let package = Package(
     .executableTarget(
       name: "ApplSpeech",
       path: "Sources/ApplSpeech"
+    ),
+    .testTarget(
+      name: "ApplSpeechTests",
+      dependencies: ["ApplSpeech"],
+      path: "Tests/ApplSpeechTests"
     )
   ]
 )
-
