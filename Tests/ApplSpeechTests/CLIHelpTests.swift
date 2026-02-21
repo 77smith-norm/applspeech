@@ -1,4 +1,5 @@
 import Testing
+
 @testable import ApplSpeech
 
 @Suite("CLI Help")
@@ -9,6 +10,9 @@ struct CLIHelpTests {
     #expect(text.contains("USAGE:"))
     #expect(text.contains("--help"))
     #expect(text.contains("--locale"))
+    #expect(text.contains("status"))
+    #expect(text.contains("authorize"))
+    #expect(text.contains("--download-model"))
     #expect(text.contains("transcribe"))
   }
 }

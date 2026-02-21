@@ -4,6 +4,7 @@ struct TranscribeOutput: Codable {
   let text: String
   let file: String
   let language: String
+  let engine: String
 }
 
 @main
@@ -23,14 +24,12 @@ struct ApplSpeech {
       print("applspeech \(version)")
       return
 
-    case .transcribe(filePath: let filePath, format: let format, localeIdentifier: let localeIdentifier):
+    case .transcribe(
+      let filePath, let format, let localeIdentifier, let engine
+    ):
       guard let filePath else {
         if format == .json {
-          let error = ["ok": false, "error": ["code": "missing_file", "message": "missing audio file path"]] as [String: Any]
-          if let data = try? JSONSerialization.data(withJSONObject: error),
-             let json = String(data: data, encoding: .utf8) {
-            fputs(json, stderr)
-          }
+          writeJSONError(code: "missing_file", message: "missing audio file path")
         } else {
           fputs("error: missing audio file path\n", stderr)
           print(HelpText.render())
@@ -41,15 +40,24 @@ struct ApplSpeech {
       do {
         let resolved = try await AudioInputResolver.resolve(filePath)
         defer { resolved.cleanup() }
-        let transcriber = SpeechFileTranscriber(localeIdentifier: localeIdentifier)
+        let (transcriber, engineUsed) = try await makeFileTranscriber(
+          engine: engine,
+          localeIdentifier: localeIdentifier
+        )
         let text = try await transcriber.transcribeFile(at: resolved.localFileURL)
 
         if format == .json {
-          let output = TranscribeOutput(text: text, file: filePath, language: localeIdentifier)
+          let output = TranscribeOutput(
+            text: text,
+            file: filePath,
+            language: localeIdentifier,
+            engine: engineUsed.rawValue
+          )
           let encoder = JSONEncoder()
           encoder.outputFormatting = []
           if let data = try? encoder.encode(output),
-             let json = String(data: data, encoding: .utf8) {
+            let json = String(data: data, encoding: .utf8)
+          {
             print(json)
           }
         } else {
@@ -57,40 +65,22 @@ struct ApplSpeech {
         }
       } catch let error as TranscriptionError {
         if format == .json {
-          let errorDict: [String: Any] = [
-            "ok": false,
-            "error": ["code": "transcription_error", "message": error.description]
-          ]
-          if let data = try? JSONSerialization.data(withJSONObject: errorDict),
-             let json = String(data: data, encoding: .utf8) {
-            fputs(json, stderr)
-          }
+          writeJSONError(code: "transcription_error", message: error.description)
         } else {
           fputs("error: \(error.description)\n", stderr)
         }
       } catch {
         if format == .json {
-          let errorDict: [String: Any] = [
-            "ok": false,
-            "error": ["code": "unknown", "message": String(describing: error)]
-          ]
-          if let data = try? JSONSerialization.data(withJSONObject: errorDict),
-             let json = String(data: data, encoding: .utf8) {
-            fputs(json, stderr)
-          }
+          writeJSONError(code: "unknown", message: String(describing: error))
         } else {
           fputs("error: \(String(describing: error))\n", stderr)
         }
       }
 
-    case .analyze(filePath: let filePath, format: let format):
+    case .analyze(let filePath, let format):
       guard let filePath else {
         if format == .json {
-          let error = ["ok": false, "error": ["code": "missing_file", "message": "missing audio file path"]] as [String: Any]
-          if let data = try? JSONSerialization.data(withJSONObject: error),
-             let json = String(data: data, encoding: .utf8) {
-            fputs(json, stderr)
-          }
+          writeJSONError(code: "missing_file", message: "missing audio file path")
         } else {
           fputs("error: missing audio file path\n", stderr)
           print(HelpText.render())
@@ -108,7 +98,8 @@ struct ApplSpeech {
           let encoder = JSONEncoder()
           encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
           if let data = try? encoder.encode(analysis),
-             let json = String(data: data, encoding: .utf8) {
+            let json = String(data: data, encoding: .utf8)
+          {
             print(json)
           }
         } else {
@@ -121,36 +112,141 @@ struct ApplSpeech {
         }
       } catch let error as VoiceAnalysisError {
         if format == .json {
-          let errorDict: [String: Any] = [
-            "ok": false,
-            "error": ["code": "analysis_error", "message": error.description]
-          ]
-          if let data = try? JSONSerialization.data(withJSONObject: errorDict),
-             let json = String(data: data, encoding: .utf8) {
-            fputs(json, stderr)
-          }
+          writeJSONError(code: "analysis_error", message: error.description)
         } else {
           fputs("error: \(error.description)\n", stderr)
         }
       } catch {
         if format == .json {
-          let errorDict: [String: Any] = [
-            "ok": false,
-            "error": ["code": "unknown", "message": String(describing: error)]
-          ]
-          if let data = try? JSONSerialization.data(withJSONObject: errorDict),
-             let json = String(data: data, encoding: .utf8) {
-            fputs(json, stderr)
-          }
+          writeJSONError(code: "unknown", message: String(describing: error))
         } else {
           fputs("error: \(String(describing: error))\n", stderr)
         }
       }
 
-    case .unknown(arguments: let arguments):
+    case .status(let format, let localeIdentifier):
+      let status = await SpeechEnvironment.status(localeIdentifier: localeIdentifier)
+      if format == .json {
+        writeJSON(status, prettyPrinted: true)
+      } else {
+        print(renderStatusText(status))
+      }
+
+    case .authorize(
+      let format, let localeIdentifier, let requestMicrophone, let downloadModel
+    ):
+      do {
+        let status = try await SpeechEnvironment.authorize(
+          localeIdentifier: localeIdentifier,
+          requestMicrophone: requestMicrophone,
+          downloadModel: downloadModel
+        )
+        if format == .json {
+          writeJSON(status, prettyPrinted: true)
+        } else {
+          print(renderStatusText(status))
+        }
+      } catch {
+        if format == .json {
+          writeJSONError(code: "authorize_failed", message: error.description)
+        } else {
+          fputs("error: \(error.description)\n", stderr)
+        }
+      }
+
+    case .unknown(let arguments):
       fputs("error: unknown arguments: \(arguments.joined(separator: " "))\n", stderr)
       print(HelpText.render())
     }
+  }
+}
+
+private func writeJSON<T: Encodable>(_ value: T, prettyPrinted: Bool) {
+  let encoder = JSONEncoder()
+  if prettyPrinted {
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+  } else {
+    encoder.outputFormatting = []
+  }
+
+  if let data = try? encoder.encode(value),
+    let json = String(data: data, encoding: .utf8)
+  {
+    print(json)
+  }
+}
+
+private func writeJSONError(code: String, message: String) {
+  let error: [String: Any] = ["ok": false, "error": ["code": code, "message": message]]
+  if let data = try? JSONSerialization.data(withJSONObject: error),
+    let json = String(data: data, encoding: .utf8)
+  {
+    fputs(json, stderr)
+  }
+}
+
+private func renderStatusText(_ status: SpeechEnvironmentStatus) -> String {
+  var lines: [String] = []
+  lines.append("Locale: \(status.locale)")
+  lines.append("Speech Recognition: \(status.permissions.speechRecognition.rawValue)")
+  lines.append("Microphone: \(status.permissions.microphone.rawValue)")
+
+  let legacy = status.engines.sfSpeechRecognizer
+  if legacy.available {
+    lines.append("SFSpeechRecognizer: available")
+    if let recognizerAvailable = legacy.recognizerAvailable {
+      lines.append("  isAvailable: \(recognizerAvailable)")
+    }
+    if let supportsOnDevice = legacy.supportsOnDeviceRecognition {
+      lines.append("  supportsOnDeviceRecognition: \(supportsOnDevice)")
+    }
+  } else {
+    lines.append("SFSpeechRecognizer: unavailable for locale")
+  }
+
+  let modern = status.engines.speechTranscriber
+  if modern.available {
+    let supportedLocale = modern.supportedLocale ?? "unsupported locale"
+    let installed = modern.modelInstalled.map(String.init(describing:)) ?? "unknown"
+    lines.append("SpeechTranscriber: available")
+    lines.append("  supportedLocale: \(supportedLocale)")
+    lines.append("  modelInstalled: \(installed)")
+  } else {
+    lines.append("SpeechTranscriber: unavailable on this OS")
+  }
+
+  lines.append("Ready: \(status.ok)")
+  return lines.joined(separator: "\n")
+}
+
+private func makeFileTranscriber(
+  engine: SpeechEngine,
+  localeIdentifier: String
+) async throws -> (any FileTranscribing, SpeechEngine) {
+  switch engine {
+  case .sfSpeechRecognizer:
+    return (SpeechFileTranscriber(localeIdentifier: localeIdentifier), .sfSpeechRecognizer)
+
+  case .speechTranscriber:
+    guard #available(macOS 26.0, *) else {
+      throw TranscriptionError.speechTranscriberNotAvailable
+    }
+    return (
+      SpeechTranscriberFileTranscriber(localeIdentifier: localeIdentifier), .speechTranscriber
+    )
+
+  case .auto:
+    if #available(macOS 26.0, *) {
+      let modelStatus = await SpeechTranscriberModelSupport.status(
+        localeIdentifier: localeIdentifier)
+      if modelStatus.available && modelStatus.modelInstalled == true {
+        return (
+          SpeechTranscriberFileTranscriber(localeIdentifier: localeIdentifier), .speechTranscriber
+        )
+      }
+    }
+
+    return (SpeechFileTranscriber(localeIdentifier: localeIdentifier), .sfSpeechRecognizer)
   }
 }
 
@@ -162,22 +258,29 @@ enum HelpText {
     USAGE:
       applspeech [--help]
       applspeech [--version]
-      applspeech transcribe <file-or-url> [--format json] [--locale en-US]
-      applspeech transcribe - [--format json] [--locale en-US]
-      applspeech transcribe tg:<telegram_file_id> [--format json] [--locale en-US]
+      applspeech transcribe <file-or-url> [--format json] [--locale en-US] [--engine auto]
+      applspeech transcribe - [--format json] [--locale en-US] [--engine auto]
+      applspeech transcribe tg:<telegram_file_id> [--format json] [--locale en-US] [--engine auto]
       applspeech analyze <file-or-url> [--format json]
+      applspeech status [--format json] [--locale en-US]
+      applspeech authorize [--format json] [--locale en-US] [--microphone] [--download-model]
 
     COMMANDS:
       transcribe <file-or-url>   Transcribe audio file, URL (http/https), or stdin (-)
       transcribe -              Read audio from stdin (e.g., cat file.m4a | applspeech transcribe -)
       transcribe tg:<file_id>   Download via Telegram then transcribe (needs TELEGRAM_BOT_TOKEN)
       analyze <file-or-url>     Analyze voice characteristics (pitch, tempo, volume)
+      status                    Show speech/microphone permission status and model availability
+      authorize                 Request permissions (and optionally download SpeechTranscriber models)
 
     OPTIONS:
       -h, --help           Show this help message
       -v, --version        Show version number
       --format json        Output JSON format (default: text)
       --locale <bcp47>    Locale identifier (default: en-US, e.g., es-ES, fr-FR)
+      --engine <name>     Transcription engine: auto, legacy (SFSpeechRecognizer), modern (SpeechTranscriber)
+      --microphone         Also request microphone permission (used for live transcription)
+      --download-model     Download SpeechTranscriber model for --locale (if supported)
 
     EXAMPLES:
       # Transcribe a local file
@@ -194,6 +297,12 @@ enum HelpText {
 
       # Analyze voice characteristics
       applspeech analyze voice.m4a --format json
+
+      # Check permissions and model status for Spanish
+      applspeech status --locale es-ES --format json
+
+      # Trigger permission prompts and download model (if needed)
+      applspeech authorize --locale es-ES --microphone --download-model --format json
 
     ENVIRONMENT:
       TELEGRAM_BOT_TOKEN   Bot token for Telegram audio download
